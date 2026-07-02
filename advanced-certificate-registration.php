@@ -169,6 +169,98 @@ function crf_save_tutor_course_market_type( $post_id ) {
     update_post_meta( $post_id, CRF_COURSE_MARKET_META_KEY, $value === 'experience' ? 'experience' : 'other' );
 }
 
+add_action( 'admin_menu', 'crf_add_course_market_mapping_page' );
+function crf_add_course_market_mapping_page() {
+    add_submenu_page(
+        'edit.php?post_type=cert_registration',
+        'ربط الدورات بنوع التسويق',
+        'ربط الدورات بنوع التسويق',
+        'manage_options',
+        'crf-course-market-map',
+        'crf_render_course_market_mapping_page'
+    );
+}
+
+function crf_render_course_market_mapping_page() {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( 'صلاحيات غير كافية.' );
+    }
+
+    $updated_count = 0;
+    if ( isset( $_POST['crf_course_market_map_nonce'] ) && wp_verify_nonce( $_POST['crf_course_market_map_nonce'], 'crf_save_course_market_map' ) ) {
+        $submitted_values = isset( $_POST['crf_course_market'] ) && is_array( $_POST['crf_course_market'] )
+            ? wp_unslash( $_POST['crf_course_market'] )
+            : array();
+
+        foreach ( crf_get_tutor_courses_for_select() as $course ) {
+            $course_id = absint( $course->ID );
+            $value     = isset( $submitted_values[ $course_id ] ) ? sanitize_key( $submitted_values[ $course_id ] ) : 'other';
+            $value     = $value === 'experience' ? 'experience' : 'other';
+
+            update_post_meta( $course_id, CRF_COURSE_MARKET_META_KEY, $value );
+            $updated_count++;
+        }
+
+        echo '<div class="notice notice-success is-dismissible"><p>تم حفظ نوع التسويق لعدد ' . esc_html( $updated_count ) . ' دورة.</p></div>';
+    }
+
+    $courses = crf_get_tutor_courses_for_select();
+    ?>
+    <div class="wrap crf-course-market-page" dir="rtl">
+        <h1>ربط دورات Tutor LMS بنوع التسويق</h1>
+        <p>اختر هل الدورة من النوع العادي <strong>other</strong> أو نوع الخبرة <strong>experience</strong>. يتم حفظ الاختيار في meta key: <code><?php echo esc_html( CRF_COURSE_MARKET_META_KEY ); ?></code></p>
+
+        <?php if ( empty( $courses ) ) : ?>
+            <div class="notice notice-warning"><p>لا توجد دورات Tutor LMS حالياً.</p></div>
+        <?php else : ?>
+            <form method="post">
+                <?php wp_nonce_field( 'crf_save_course_market_map', 'crf_course_market_map_nonce' ); ?>
+                <table class="widefat striped">
+                    <thead>
+                        <tr>
+                            <th style="text-align:right;">الدورة</th>
+                            <th style="width:120px;text-align:right;">الحالة</th>
+                            <th style="width:320px;text-align:right;">نوع التسويق</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ( $courses as $course ) : ?>
+                            <?php
+                            $value = get_post_meta( $course->ID, CRF_COURSE_MARKET_META_KEY, true );
+                            if ( ! in_array( $value, array( 'other', 'experience' ), true ) ) {
+                                $value = 'other';
+                            }
+                            $status_object = get_post_status_object( $course->post_status );
+                            $status_label  = $status_object ? $status_object->label : $course->post_status;
+                            ?>
+                            <tr>
+                                <td>
+                                    <strong><?php echo esc_html( get_the_title( $course ) ); ?></strong>
+                                    <div style="color:#646970;">ID: <?php echo esc_html( $course->ID ); ?></div>
+                                </td>
+                                <td><?php echo esc_html( $status_label ); ?></td>
+                                <td>
+                                    <?php foreach ( crf_get_course_market_options() as $option_value => $label ) : ?>
+                                        <label style="display:inline-block;margin-left:18px;">
+                                            <input type="radio" name="crf_course_market[<?php echo esc_attr( $course->ID ); ?>]" value="<?php echo esc_attr( $option_value ); ?>" <?php checked( $value, $option_value ); ?>>
+                                            <?php echo esc_html( $label ); ?>
+                                        </label>
+                                    <?php endforeach; ?>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+
+                <p class="submit">
+                    <button type="submit" class="button button-primary">حفظ ربط الدورات</button>
+                </p>
+            </form>
+        <?php endif; ?>
+    </div>
+    <?php
+}
+
 // 1. Register Custom Post Type
 add_action( 'init', 'crf_ult_register_cpt' );
 function crf_ult_register_cpt() {
