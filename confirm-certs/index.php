@@ -253,6 +253,18 @@ function drawRtlTextInBox($image, $fontSize, $rightX, $y, $maxWidth, $color, $fo
     imagettftext($image, $fontSize, 0, $x, $y, $color, $font, $text);
 }
 
+function drawBoldRtlTextInBox($image, $fontSize, $rightX, $y, $maxWidth, $color, $font, $text)
+{
+    $text = prepareArabicText($text);
+    $fontSize = fitFontSize($fontSize, $font, $text, $maxWidth);
+    $box = imagettfbbox($fontSize, 0, $font, $text);
+    $textWidth = abs($box[2] - $box[0]);
+    $x = $rightX - $textWidth;
+
+    imagettftext($image, $fontSize, 0, $x, $y, $color, $font, $text);
+    imagettftext($image, $fontSize, 0, $x + 1, $y, $color, $font, $text);
+}
+
 function drawCenteredRtlText($image, $fontSize, $centerX, $y, $maxWidth, $color, $font, $text)
 {
     $text = prepareArabicText($text);
@@ -783,8 +795,8 @@ function drawSeatCertificate($image, $name, $coursename, $dateText, $governorate
 
 function drawCardCertificate($image, $name, $coursename, $governorate, $nationalId, $approvalDate, $registrationNumber, $photoPath)
 {
-    $font = is_readable('/usr/share/fonts/truetype/noto/NotoNaskhArabic-Bold.ttf')
-        ? '/usr/share/fonts/truetype/noto/NotoNaskhArabic-Bold.ttf'
+    $font = is_readable(__DIR__ . '/arial.ttf')
+        ? __DIR__ . '/arial.ttf'
         : (is_readable('/usr/share/fonts/truetype/noto/NotoSansArabic-Bold.ttf')
             ? '/usr/share/fonts/truetype/noto/NotoSansArabic-Bold.ttf'
             : getCertificateFont('bold'));
@@ -795,7 +807,7 @@ function drawCardCertificate($image, $name, $coursename, $governorate, $national
     }
 
     $black = imagecolorallocate($image, 0, 0, 0);
-    $red = imagecolorallocate($image, 170, 0, 0);
+    $red = imagecolorallocate($image, 176, 0, 0);
     $white = imagecolorallocate($image, 255, 255, 255);
     $gold = imagecolorallocate($image, 222, 188, 132);
     $plainFont = is_readable('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf')
@@ -820,10 +832,10 @@ function drawCardCertificate($image, $name, $coursename, $governorate, $national
     $approvalDate = formatCardApprovalDate($approvalDate);
     $registrationNumber = toArabicIndicDigits($registrationNumber);
 
-    drawRtlTextInBox($image, 29, 810, 250, 420, $red, $font, $name);
-    drawRtlTextInBox($image, 27, 810, 305, 310, $black, $font, $governorate);
+    drawBoldRtlTextInBox($image, 30, 810, 250, 420, $black, $font, $name);
+    drawBoldRtlTextInBox($image, 30, 810, 305, 310, $black, $font, $governorate);
     drawPlainTextInBox($image, 23, 805, 357, 320, $black, $plainFont, $nationalId);
-    drawRtlTextInBox($image, 27, 760, 415, 380, $black, $font, $coursename);
+    drawBoldRtlTextInBox($image, 30, 805, 415, 430, $black, $font, $coursename);
     drawPlainTextInBox($image, 23, 805, 465, 320, $black, $plainFont, $approvalDate);
     drawPlainTextInBox($image, 23, 805, 520, 320, $black, $plainFont, $registrationNumber);
     drawPlainTextInBox($image, 20, 545, 630, 120, $gold, $plainFont, $registrationNumber);
