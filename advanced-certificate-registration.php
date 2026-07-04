@@ -90,6 +90,15 @@ function crf_find_course_id_for_registration( $post_id ) {
     return $matched ? absint( $matched->ID ) : 0;
 }
 
+function crf_get_registration_course_title( $post_id ) {
+    $course_id = crf_find_course_id_for_registration( $post_id );
+    if ( $course_id ) {
+        return get_the_title( $course_id );
+    }
+
+    return get_post_meta( $post_id, '_course', true );
+}
+
 function crf_get_registration_market_type( $post_id ) {
     $course_id = crf_find_course_id_for_registration( $post_id );
     if ( ! $course_id ) {
@@ -797,7 +806,7 @@ function crf_generate_confirm_cert_file( $post_id, $template ) {
     $args     = array(
         'tpl'           => $template,
         'name'          => get_the_title( $post_id ),
-        'course'        => get_post_meta( $post_id, '_course', true ),
+        'course'        => crf_get_registration_course_title( $post_id ),
         'date'          => $date,
         'governorate'   => get_post_meta( $post_id, '_location', true ),
         'national_id'   => get_post_meta( $post_id, '_nat_id', true ),
@@ -1262,7 +1271,7 @@ add_action( 'manage_cert_registration_posts_custom_column', 'crf_ult_col_content
 function crf_ult_col_content( $col, $post_id ) {
     switch ( $col ) {
         case 'phone': echo esc_html(get_post_meta($post_id, '_phone', true)); break;
-        case 'course': echo esc_html(get_post_meta($post_id, '_course', true)); break;
+        case 'course': echo esc_html( crf_get_registration_course_title( $post_id ) ); break;
         case 'receipts': 
             echo '<b>الشهادات:</b> ' . esc_html(get_post_meta($post_id, '_receipt', true)) . '<br>';
             echo '<b>الحضور:</b> ' . esc_html(get_post_meta($post_id, '_att_receipt', true));
@@ -1470,7 +1479,7 @@ function crf_ult_handle_export() {
             get_post_meta($pid, '_nat_id', true), 
             get_post_meta($pid, '_phone', true),
             get_post_meta($pid, '_location', true), 
-            get_post_meta($pid, '_course', true), 
+            crf_get_registration_course_title( $pid ), 
             get_post_meta($pid, '_date', true),
             get_post_meta($pid, '_receipt', true), 
             get_post_meta($pid, '_att_receipt', true), 
