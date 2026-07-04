@@ -67,8 +67,8 @@ function crf_get_default_generation_templates_for_market( $market_type ) {
 function crf_get_generation_template_options() {
     return array(
         'management'    => 'المديرية',
-        'eaglestate'    => 'مجلس الدولة',
-        'eagletogether' => 'مجلس معاً',
+        'eaglestate'    => 'نسر المحافظة',
+        'eagletogether' => 'نسر التضامن',
         'card'          => 'كارنية',
         'seat'          => 'شهادة الدورة',
         'experience'    => 'شهادة خبرة',
@@ -122,8 +122,8 @@ function crf_get_generation_labels() {
     return array_merge( crf_get_generation_template_options(), array(
         'card'          => 'كارنية',
         'management'    => 'المديرية',
-        'eaglestate'    => 'مجلس',
-        'eagletogether' => 'مجلس',
+        'eaglestate'    => 'نسر المحافظة',
+        'eagletogether' => 'نسر التضامن',
         'seat'          => 'شهادة الدورة',
         'experience'    => 'خبرة حجامة و تدليك و  سم نحل و ابر صينية',
     ) );
@@ -537,7 +537,7 @@ function crf_ult_render_generator_box_callback( $post ) {
         
         <button type="button" class="button button-primary crf-gen-btn" data-cert-action="card" style="background:#2ecc71; border-color:#27ae60;">توليد الكارنية</button>
         <button type="button" class="button button-primary crf-gen-btn" data-cert-action="management" style="background:#3498db; border-color:#2980b9;">توليد المديرية</button>
-        <button type="button" class="button button-primary crf-gen-btn" data-cert-action="council" style="background:#9b59b6; border-color:#8e44ad;">توليد مجلس</button>
+        <button type="button" class="button button-primary crf-gen-btn" data-cert-action="council" style="background:#9b59b6; border-color:#8e44ad;">توليد النسر</button>
         <button type="button" class="button button-primary crf-gen-btn" data-cert-action="certificate" style="background:#f1c40f; border-color:#f39c12; color:#000;">توليد الشهادة</button>
         <button type="button" class="button button-secondary crf-gen-btn" data-cert-action="all">توليد ملفات الدورة المحددة</button>
 

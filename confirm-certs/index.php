@@ -661,7 +661,32 @@ function drawImageFit($dst, $src, $dstX, $dstY, $dstW, $dstH)
     imagecopyresampled($dst, $src, $dstX, $dstY, 0, 0, $dstW, $dstH, imagesx($src), imagesy($src));
 }
 
-function drawManagementCertificate($image, $name, $coursename, $hours, $dateText)
+function drawCertificateFooterCode($image, $governorate, $receiptNumber)
+{
+    $font = getCertificateFont('bold');
+    if ($font === false) {
+        return;
+    }
+
+    $governorate = normalizeCardGovernorate($governorate);
+    $receiptNumber = toWesternDigits($receiptNumber);
+    $text = trim($governorate . ' كود ' . $receiptNumber);
+    if ($text === 'كود') {
+        return;
+    }
+
+    $darkBlue = imagecolorallocate($image, 23, 35, 78);
+    $width = imagesx($image);
+    $height = imagesy($image);
+    $fontSize = max(18, (int) round($width / 72));
+    $rightX = (int) round($width * 0.34);
+    $y = (int) round($height * 0.94);
+    $maxWidth = (int) round($width * 0.28);
+
+    drawRtlTextInBox($image, $fontSize, $rightX, $y, $maxWidth, $darkBlue, $font, $text);
+}
+
+function drawManagementCertificate($image, $name, $coursename, $hours, $dateText, $governorate, $receiptNumber)
 {
     $font = getCertificateFont('bold');
     if ($font === false) {
@@ -681,9 +706,10 @@ function drawManagementCertificate($image, $name, $coursename, $hours, $dateText
     drawCenteredRtlText($image, 72, $centerX, 2190, 1650, $darkBlue, $font, $coursename);
     drawCenteredRtlText($image, 62, $centerX, 2350, 1450, $blue, $font, 'بإجمالي عدد ' . $hours . ' ساعة تدريبية');
     drawCenteredRtlText($image, 66, $centerX, 2470, 1300, $darkBlue, $font, $dateText);
+    drawCertificateFooterCode($image, $governorate, $receiptNumber);
 }
 
-function drawEagleStateCertificate($image, $name, $coursename, $month, $year, $hours)
+function drawEagleStateCertificate($image, $name, $coursename, $month, $year, $hours, $governorate, $receiptNumber)
 {
     $font = is_readable('/usr/share/fonts/truetype/noto/NotoSansArabic-Bold.ttf')
         ? '/usr/share/fonts/truetype/noto/NotoSansArabic-Bold.ttf'
@@ -703,11 +729,7 @@ function drawEagleStateCertificate($image, $name, $coursename, $month, $year, $h
         : $font;
 
     drawCenteredRtlText($image, 82, $centerX, 1658, 1450, $gold, $font, $name);
-    drawCenteredTextSegments($image, 76, $centerX, 2195, $gold, $font, [
-        ['text' => ')', 'shape' => false, 'font' => $plainFont],
-        ['text' => $coursename, 'shape' => true],
-        ['text' => '(', 'shape' => false, 'font' => $plainFont],
-    ]);
+    drawCenteredRtlText($image, 76, $centerX, 2195, 1350, $gold, $font, $coursename);
 
     imagefilledrectangle($image, 430, 2260, 2050, 2660, $white);
     drawCenteredRtlText($image, 62, $centerX, 2360, 1150, $black, $font, 'خلال شهر ' . $month . ' ' . $year);
@@ -716,9 +738,10 @@ function drawEagleStateCertificate($image, $name, $coursename, $month, $year, $h
         ['text' => ' (' . $hours . ') ', 'shape' => false, 'font' => $plainFont],
         ['text' => 'عدد الساعات', 'shape' => true],
     ]);
+    drawCertificateFooterCode($image, $governorate, $receiptNumber);
 }
 
-function drawEagleTogetherCertificate($image, $name, $coursename)
+function drawEagleTogetherCertificate($image, $name, $coursename, $governorate, $receiptNumber)
 {
     $font = is_readable('/usr/share/fonts/truetype/noto/NotoSansArabic-Bold.ttf')
         ? '/usr/share/fonts/truetype/noto/NotoSansArabic-Bold.ttf'
@@ -734,9 +757,10 @@ function drawEagleTogetherCertificate($image, $name, $coursename)
 
     drawCenteredRtlText($image, 88, $centerX, 1245, 1450, $black, $font, $name);
     drawCenteredRtlText($image, 82, $centerX, 1725, 1050, $black, $font, $coursename);
+    drawCertificateFooterCode($image, $governorate, $receiptNumber);
 }
 
-function drawExperienceCertificate($image, $name, $coursename, $dateText)
+function drawExperienceCertificate($image, $name, $coursename, $dateText, $governorate, $receiptNumber)
 {
     $font = is_readable('/usr/share/fonts/truetype/noto/NotoSansArabic-Bold.ttf')
         ? '/usr/share/fonts/truetype/noto/NotoSansArabic-Bold.ttf'
@@ -758,6 +782,7 @@ function drawExperienceCertificate($image, $name, $coursename, $dateText)
     drawCenteredRtlText($image, 52, 1240, 880, 2320, $black, $font, 'بجدّيتها في التطبيق العملي على الحالات من خلال الدورة وتقديم الأفضل');
     drawCenteredRtlText($image, 52, 1240, 965, 2320, $black, $font, 'وتشهد لها بعلاقتها الطيبة مع المدرسين و الحالات');
     drawCenteredRtlText($image, 52, 1240, 1050, 2320, $black, $font, 'إضافة إلى أخلاقها المثالية والتزامها بالمواعيد وتعليمات الإدارة');
+    drawCertificateFooterCode($image, $governorate, $receiptNumber);
 }
 
 function drawSeatCertificate($image, $name, $coursename, $dateText, $governorate, $receiptNumber)
@@ -885,6 +910,8 @@ $coursename = isset($_GET['course']) ? $_GET['course'] : $defaultCourseName;
 $seatDate = isset($_GET['date']) ? $_GET['date'] : "خلال شهر مارس ٢٠٢٦";
 $seatGovernorate = isset($_GET['governorate']) ? $_GET['governorate'] : "القاهرة";
 $seatReceiptNumber = isset($_GET['registration']) ? $_GET['registration'] : "1234";
+$certificateGovernorate = isset($_GET['governorate']) ? $_GET['governorate'] : "القاهرة";
+$certificateReceiptNumber = isset($_GET['registration']) ? $_GET['registration'] : "1234";
 $managementDate = isset($_GET['date']) ? $_GET['date'] : "خلال شهر أكتوبر ٢٠٢٤";
 $managementHours = isset($_GET['hours']) ? $_GET['hours'] : "١٥";
 $eagleStateMonth = isset($_GET['month']) ? $_GET['month'] : "إبريل";
@@ -902,13 +929,13 @@ if ($template === 'card' && $cardPhoto === '' && is_readable(__DIR__ . '/persona
 
 // Draw text
 if ($template === 'management') {
-    drawManagementCertificate($image, $name, $coursename, $managementHours, $managementDate);
+    drawManagementCertificate($image, $name, $coursename, $managementHours, $managementDate, $certificateGovernorate, $certificateReceiptNumber);
 } elseif ($template === 'eaglestate') {
-    drawEagleStateCertificate($image, $name, $coursename, $eagleStateMonth, $eagleStateYear, $eagleStateHours);
+    drawEagleStateCertificate($image, $name, $coursename, $eagleStateMonth, $eagleStateYear, $eagleStateHours, $certificateGovernorate, $certificateReceiptNumber);
 } elseif ($template === 'eagletogother' || $template === 'eagletogether') {
-    drawEagleTogetherCertificate($image, $name, $coursename);
+    drawEagleTogetherCertificate($image, $name, $coursename, $certificateGovernorate, $certificateReceiptNumber);
 } elseif ($template === 'experience') {
-    drawExperienceCertificate($image, $name, $coursename, $experienceDate);
+    drawExperienceCertificate($image, $name, $coursename, $experienceDate, $certificateGovernorate, $certificateReceiptNumber);
 } elseif ($template === 'card') {
     drawCardCertificate($image, $name, $coursename, $cardGovernorate, $cardNationalId, $cardApprovalDate, $cardRegistrationNumber, $cardPhoto);
 } elseif ($template === 'seat') {
@@ -918,6 +945,7 @@ if ($template === 'management') {
     $courseRightX = imagesx($image) - $courseX;
     drawRtlText($image, $name_font_size, $nameRightX, $nameY, $color, $font, $name);
     drawRtlText($image, $course_font_size, $courseRightX, $courseY, $color, $font, $coursename);
+    drawCertificateFooterCode($image, $certificateGovernorate, $certificateReceiptNumber);
 }
 
 // Save and Output
