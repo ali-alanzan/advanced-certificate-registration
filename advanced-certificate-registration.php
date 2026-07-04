@@ -856,6 +856,31 @@ function crf_ult_render_form() {
         .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
         .loading-box { background: #e2e3e5; color: #383d41; border: 1px solid #d6d8db; }
         .error-box { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .crf-result-modal { position: fixed; inset: 0; z-index: 999999; display: none; align-items: center; justify-content: center; padding: 18px; direction: rtl; font-family: system-ui, -apple-system, sans-serif; }
+        .crf-result-modal.is-open { display: flex; }
+        .crf-result-backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.72); }
+        .crf-result-panel { position: relative; width: min(620px, 100%); max-height: 92vh; overflow: auto; background: #202124; color: #dbeafe; border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; box-shadow: 0 24px 80px rgba(0,0,0,0.45); }
+        .crf-result-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 26px 28px 18px; border-bottom: 1px solid rgba(255,255,255,0.07); }
+        .crf-result-header h2 { margin: 0 0 8px; color: #e6f2ff; font-size: 28px; line-height: 1.25; }
+        .crf-result-header p { margin: 0; color: #c7d2e0; font-size: 18px; }
+        .crf-result-close { border: 0; background: transparent; color: #9ca3af; font-size: 34px; line-height: 1; cursor: pointer; padding: 0; }
+        .crf-result-body { padding: 24px 28px 28px; }
+        .crf-result-card { border: 1px solid rgba(37, 99, 235, 0.18); background: #1d2025; border-radius: 10px; padding: 24px; }
+        .crf-result-card h3 { margin: 0 0 22px; color: #e6f2ff; font-size: 21px; }
+        .crf-result-item { padding: 0 0 18px; margin: 0 0 18px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .crf-result-item:last-child { margin-bottom: 0; border-bottom: 0; padding-bottom: 0; }
+        .crf-result-label { display: block; color: #e6f2ff; font-size: 19px; font-weight: 700; margin-bottom: 8px; }
+        .crf-result-value { color: #cbd5e1; font-size: 19px; line-height: 1.55; word-break: break-word; }
+        .crf-result-actions { display: grid; gap: 12px; margin-top: 24px; }
+        .crf-result-actions button { width: 100%; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); padding: 13px 16px; cursor: pointer; font-size: 18px; font-weight: 700; }
+        .crf-result-ok { background: #1445e6; color: #fff; border-color: #1445e6 !important; }
+        .crf-result-pdf { background: #1f2933; color: #f8fafc; }
+        .crf-result-print { background: #555; color: #f8fafc; }
+        @media (max-width: 520px) {
+            .crf-result-header, .crf-result-body { padding-left: 18px; padding-right: 18px; }
+            .crf-result-header h2 { font-size: 24px; }
+            .crf-result-label, .crf-result-value, .crf-result-actions button { font-size: 16px; }
+        }
     </style>
 
     <div class="adv-cert-form">
@@ -931,8 +956,86 @@ function crf_ult_render_form() {
         </form>
     </div>
 
+    <div id="crfResultModal" class="crf-result-modal" aria-hidden="true">
+        <div class="crf-result-backdrop" data-crf-close-result></div>
+        <div class="crf-result-panel" role="dialog" aria-modal="true" aria-labelledby="crfResultTitle">
+            <div class="crf-result-header">
+                <div>
+                    <h2 id="crfResultTitle">اكتمل التسجيل</h2>
+                    <p>تم حفظ بياناتك بنجاح</p>
+                </div>
+                <button type="button" class="crf-result-close" data-crf-close-result aria-label="إغلاق">×</button>
+            </div>
+            <div class="crf-result-body">
+                <div class="crf-result-card" id="crfResultPrintable">
+                    <h3>البيانات المرسلة</h3>
+                    <div class="crf-result-item">
+                        <span class="crf-result-label">الدورة</span>
+                        <div class="crf-result-value" data-crf-result-course></div>
+                    </div>
+                    <div class="crf-result-item">
+                        <span class="crf-result-label">رقم التسجيل</span>
+                        <div class="crf-result-value" data-crf-result-registration></div>
+                    </div>
+                    <div class="crf-result-item">
+                        <span class="crf-result-label">الاسم الكامل</span>
+                        <div class="crf-result-value" data-crf-result-name></div>
+                    </div>
+                </div>
+                <div class="crf-result-actions">
+                    <button type="button" class="crf-result-ok" data-crf-close-result>حسناً</button>
+                    <button type="button" class="crf-result-pdf" data-crf-print-result>تحميل PDF</button>
+                    <button type="button" class="crf-result-print" data-crf-print-result>طباعة</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
     jQuery(document).ready(function($) {
+        var lastResultData = null;
+
+        function escapeHtml(value) {
+            return String(value || '').replace(/[&<>"']/g, function(char) {
+                return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[char];
+            });
+        }
+
+        function openResultModal(resultData) {
+            lastResultData = resultData;
+            $('[data-crf-result-course]').text(resultData.course);
+            $('[data-crf-result-registration]').text(resultData.registration);
+            $('[data-crf-result-name]').text(resultData.name);
+            $('#crfResultModal').addClass('is-open').attr('aria-hidden', 'false');
+        }
+
+        function closeResultModal() {
+            $('#crfResultModal').removeClass('is-open').attr('aria-hidden', 'true');
+        }
+
+        function printResult() {
+            if (!lastResultData) return;
+
+            var printWindow = window.open('', '_blank', 'width=760,height=900');
+            if (!printWindow) return;
+
+            printWindow.document.write('<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>بيانات التسجيل</title><style>body{font-family:Arial,Tahoma,sans-serif;direction:rtl;padding:32px;color:#111}h1{font-size:28px;margin:0 0 8px}.muted{color:#555;margin:0 0 28px}.card{border:1px solid #ddd;border-radius:10px;padding:24px;max-width:680px}.item{border-bottom:1px solid #eee;padding:0 0 18px;margin:0 0 18px}.item:last-child{border-bottom:0;margin-bottom:0;padding-bottom:0}.label{font-weight:700;font-size:18px;margin-bottom:8px}.value{font-size:20px;line-height:1.6}</style></head><body>');
+            printWindow.document.write('<h1>اكتمل التسجيل</h1><p class="muted">تم حفظ بياناتك بنجاح</p><div class="card">');
+            printWindow.document.write('<div class="item"><div class="label">الدورة</div><div class="value">' + escapeHtml(lastResultData.course) + '</div></div>');
+            printWindow.document.write('<div class="item"><div class="label">رقم التسجيل</div><div class="value">' + escapeHtml(lastResultData.registration) + '</div></div>');
+            printWindow.document.write('<div class="item"><div class="label">الاسم الكامل</div><div class="value">' + escapeHtml(lastResultData.name) + '</div></div>');
+            printWindow.document.write('</div></body></html>');
+            printWindow.document.close();
+            printWindow.focus();
+            setTimeout(function() { printWindow.print(); }, 300);
+        }
+
+        $('[data-crf-close-result]').on('click', closeResultModal);
+        $('[data-crf-print-result]').on('click', printResult);
+        $(document).on('keydown', function(e) {
+            if (e.key === 'Escape') closeResultModal();
+        });
+
         $('#course_location, #course_name').select2({ placeholder: "-- اختر من القائمة --", allowClear: true });
         $('#course_name').on('change', function() {
             $('#course_id').val($(this).find(':selected').data('course-id') || '');
@@ -978,6 +1081,11 @@ function crf_ult_render_form() {
             submitHandler: function(form) {
                 const statusDiv = document.getElementById('form-status');
                 const formData = new FormData(form);
+                const resultData = {
+                    course: $('#course_name').val(),
+                    registration: $('#receipt_number').val(),
+                    name: $('#full_name').val()
+                };
                 formData.append('action', 'save_adv_cert_data');
                 statusDiv.style.display = 'block'; statusDiv.className = 'loading-box'; statusDiv.innerHTML = '🔄 جاري إرسال البيانات...';
 
@@ -985,7 +1093,9 @@ function crf_ult_render_form() {
                 .then(response => response.json())
                 .then(data => {
                     if(data.success) {
-                        statusDiv.className = 'success'; statusDiv.innerHTML = '✅ ' + data.data; form.reset();
+                        statusDiv.className = 'success'; statusDiv.innerHTML = '✅ ' + data.data;
+                        openResultModal(resultData);
+                        form.reset();
                         $('#imagePreview').hide(); $('#course_location, #course_name').val(null).trigger('change');
                     } else { statusDiv.className = 'error-box'; statusDiv.innerHTML = '❌ ' + data.data; }
                 });
