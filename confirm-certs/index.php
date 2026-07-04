@@ -783,9 +783,11 @@ function drawSeatCertificate($image, $name, $coursename, $dateText, $governorate
 
 function drawCardCertificate($image, $name, $coursename, $governorate, $nationalId, $approvalDate, $registrationNumber, $photoPath)
 {
-    $font = is_readable('/usr/share/fonts/truetype/noto/NotoSansArabic-Bold.ttf')
-        ? '/usr/share/fonts/truetype/noto/NotoSansArabic-Bold.ttf'
-        : getCertificateFont('bold');
+    $font = is_readable('/usr/share/fonts/truetype/noto/NotoNaskhArabic-Bold.ttf')
+        ? '/usr/share/fonts/truetype/noto/NotoNaskhArabic-Bold.ttf'
+        : (is_readable('/usr/share/fonts/truetype/noto/NotoSansArabic-Bold.ttf')
+            ? '/usr/share/fonts/truetype/noto/NotoSansArabic-Bold.ttf'
+            : getCertificateFont('bold'));
     if ($font === false) {
         imagedestroy($image);
         http_response_code(500);
@@ -793,7 +795,7 @@ function drawCardCertificate($image, $name, $coursename, $governorate, $national
     }
 
     $black = imagecolorallocate($image, 0, 0, 0);
-    $red = imagecolorallocate($image, 190, 0, 0);
+    $red = imagecolorallocate($image, 170, 0, 0);
     $white = imagecolorallocate($image, 255, 255, 255);
     $gold = imagecolorallocate($image, 222, 188, 132);
     $plainFont = is_readable('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf')
@@ -818,10 +820,10 @@ function drawCardCertificate($image, $name, $coursename, $governorate, $national
     $approvalDate = formatCardApprovalDate($approvalDate);
     $registrationNumber = toArabicIndicDigits($registrationNumber);
 
-    drawRtlTextInBox($image, 30, 810, 250, 420, $red, $font, $name);
-    drawRtlTextInBox($image, 28, 810, 305, 310, $black, $font, $governorate);
+    drawRtlTextInBox($image, 29, 810, 250, 420, $red, $font, $name);
+    drawRtlTextInBox($image, 27, 810, 305, 310, $black, $font, $governorate);
     drawPlainTextInBox($image, 23, 805, 357, 320, $black, $plainFont, $nationalId);
-    drawRtlTextInBox($image, 28, 805, 415, 425, $black, $font, $coursename);
+    drawRtlTextInBox($image, 27, 760, 415, 380, $black, $font, $coursename);
     drawPlainTextInBox($image, 23, 805, 465, 320, $black, $plainFont, $approvalDate);
     drawPlainTextInBox($image, 23, 805, 520, 320, $black, $plainFont, $registrationNumber);
     drawPlainTextInBox($image, 20, 545, 630, 120, $gold, $plainFont, $registrationNumber);
