@@ -31,6 +31,45 @@ function crf_get_tutor_courses_for_select() {
     return is_array( $courses ) ? $courses : array();
 }
 
+function crf_normalize_course_name_for_matching( $course_name ) {
+    $course_name = trim( wp_strip_all_tags( (string) $course_name ) );
+    return preg_replace( '/\s+/u', ' ', $course_name );
+}
+
+function crf_get_course_name_id_rules() {
+    return array(
+        'exact' => array(
+            'دورة التغذية العلاجية المكثفة' => 27297,
+            'دورة الحجامة المكثفة'          => 26369,
+            'دورة التخاطب تعديل السلوك'    => 26449,
+            'دورة التخاطب وتعديل السلوك'   => 26449,
+        ),
+        'contains' => array(
+            'محاسبة' => 27598,
+        ),
+    );
+}
+
+function crf_match_course_id_from_name( $course_name ) {
+    $course_name = crf_normalize_course_name_for_matching( $course_name );
+    if ( $course_name === '' ) {
+        return 0;
+    }
+
+    $rules = crf_get_course_name_id_rules();
+    if ( isset( $rules['exact'][ $course_name ] ) && get_post_type( $rules['exact'][ $course_name ] ) === 'courses' ) {
+        return absint( $rules['exact'][ $course_name ] );
+    }
+
+    foreach ( $rules['contains'] as $needle => $course_id ) {
+        if ( mb_strpos( $course_name, $needle ) !== false && get_post_type( $course_id ) === 'courses' ) {
+            return absint( $course_id );
+        }
+    }
+
+    return 0;
+}
+
 function crf_find_course_id_for_registration( $post_id ) {
     $course_id = absint( get_post_meta( $post_id, '_course_id', true ) );
     if ( $course_id && get_post_type( $course_id ) === 'courses' ) {
@@ -40,6 +79,11 @@ function crf_find_course_id_for_registration( $post_id ) {
     $course_name = get_post_meta( $post_id, '_course', true );
     if ( empty( $course_name ) ) {
         return 0;
+    }
+
+    $mapped_course_id = crf_match_course_id_from_name( $course_name );
+    if ( $mapped_course_id ) {
+        return $mapped_course_id;
     }
 
     $matched = get_page_by_title( $course_name, OBJECT, 'courses' );
@@ -270,6 +314,33 @@ function crf_render_course_market_mapping_page() {
         wp_die( 'صلاحيات غير كافية.' );
     }
 
+    if ( isset( $_POST['crf_course_link_migration_nonce'] ) && wp_verify_nonce( $_POST['crf_course_link_migration_nonce'], 'crf_course_link_migration' ) ) {
+        $updated_count = 0;
+        $skipped_count = 0;
+        $registrations = get_posts( array(
+            'post_type'      => 'cert_registration',
+            'post_status'    => 'any',
+            'posts_per_page' => -1,
+            'fields'         => 'ids',
+        ) );
+
+        foreach ( $registrations as $registration_id ) {
+            $course_name = get_post_meta( $registration_id, '_course', true );
+            $course_id   = crf_match_course_id_from_name( $course_name );
+
+            if ( ! $course_id ) {
+                $skipped_count++;
+                continue;
+            }
+
+            update_post_meta( $registration_id, '_course_id', $course_id );
+            update_post_meta( $registration_id, '_course', get_the_title( $course_id ) );
+            $updated_count++;
+        }
+
+        echo '<div class="notice notice-success is-dismissible"><p>تم ربط ' . esc_html( $updated_count ) . ' طلب بدورات Tutor LMS. تم تخطي ' . esc_html( $skipped_count ) . ' طلب بدون قاعدة مطابقة.</p></div>';
+    }
+
     $updated_count = 0;
     if ( isset( $_POST['crf_course_market_map_nonce'] ) && wp_verify_nonce( $_POST['crf_course_market_map_nonce'], 'crf_save_course_market_map' ) ) {
         $submitted_values = isset( $_POST['crf_course_market'] ) && is_array( $_POST['crf_course_market'] )
@@ -303,6 +374,11 @@ function crf_render_course_market_mapping_page() {
     <div class="wrap crf-course-market-page" dir="rtl">
         <h1>ربط دورات Tutor LMS بنوع التسويق</h1>
         <p>اختر نوع التسويق والملفات التي يجب توليدها لكل دورة. زر "توليد الكل" في الطلب سيستخدم الملفات المختارة هنا حسب الدورة المرتبطة بالطلب.</p>
+        <form method="post" style="margin: 16px 0 22px;">
+            <?php wp_nonce_field( 'crf_course_link_migration', 'crf_course_link_migration_nonce' ); ?>
+            <button type="submit" class="button button-secondary">ربط الطلبات القديمة بالدورات تلقائياً</button>
+            <p class="description">يربط: دورة التغذية العلاجية المكثفة، دورة الحجامة المكثفة، دورة التخاطب تعديل السلوك، وأي دورة تحتوي على "محاسبة".</p>
+        </form>
 
         <?php if ( empty( $courses ) ) : ?>
             <div class="notice notice-warning"><p>لا توجد دورات Tutor LMS حالياً.</p></div>
@@ -421,6 +497,10 @@ function crf_ult_render_meta_box_callback( $post ) {
     $location    = get_post_meta( $post->ID, '_location', true );
     $course      = get_post_meta( $post->ID, '_course', true );
     $course_id   = absint( get_post_meta( $post->ID, '_course_id', true ) );
+    if ( ! $course_id ) {
+        $course_id = crf_find_course_id_for_registration( $post->ID );
+    }
+    $tutor_courses = crf_get_tutor_courses_for_select();
     $date        = get_post_meta( $post->ID, '_date', true );
     $receipt     = get_post_meta( $post->ID, '_receipt', true );
     $att_receipt = get_post_meta( $post->ID, '_att_receipt', true );
@@ -460,8 +540,17 @@ function crf_ult_render_meta_box_callback( $post ) {
             </div>
             <div class="crf-meta-item">
                 <label>اسم الدورة:</label>
-                <input type="text" name="cert_course" value="<?php echo esc_attr($course); ?>">
-                <input type="hidden" name="cert_course_id" value="<?php echo esc_attr($course_id); ?>">
+                <select name="cert_course_id" style="width:100%;">
+                    <option value="">-- اختر الدورة --</option>
+                    <?php foreach ( $tutor_courses as $course_post ) : ?>
+                        <option value="<?php echo esc_attr( $course_post->ID ); ?>" <?php selected( $course_id, $course_post->ID ); ?>>
+                            <?php echo esc_html( get_the_title( $course_post ) ); ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+                <?php if ( $course && ! $course_id ) : ?>
+                    <small style="margin-top:6px;color:#b32d2e;">القيمة القديمة غير مرتبطة بدورة: <?php echo esc_html( $course ); ?></small>
+                <?php endif; ?>
             </div>
             <div class="crf-meta-item">
                 <label>تاريخ الدورة:</label>
@@ -808,8 +897,15 @@ function crf_ult_save_meta_box_fields( $post_id ) {
     if ( isset( $_POST['cert_nat_id'] ) ) update_post_meta( $post_id, '_nat_id', sanitize_text_field( $_POST['cert_nat_id'] ) );
     if ( isset( $_POST['cert_phone'] ) ) update_post_meta( $post_id, '_phone', sanitize_text_field( $_POST['cert_phone'] ) );
     if ( isset( $_POST['cert_location'] ) ) update_post_meta( $post_id, '_location', sanitize_text_field( $_POST['cert_location'] ) );
-    if ( isset( $_POST['cert_course'] ) ) update_post_meta( $post_id, '_course', sanitize_text_field( $_POST['cert_course'] ) );
-    if ( isset( $_POST['cert_course_id'] ) ) update_post_meta( $post_id, '_course_id', absint( $_POST['cert_course_id'] ) );
+    if ( isset( $_POST['cert_course_id'] ) ) {
+        $course_id = absint( $_POST['cert_course_id'] );
+        if ( $course_id && get_post_type( $course_id ) === 'courses' ) {
+            update_post_meta( $post_id, '_course_id', $course_id );
+            update_post_meta( $post_id, '_course', get_the_title( $course_id ) );
+        } else {
+            update_post_meta( $post_id, '_course_id', 0 );
+        }
+    }
     if ( isset( $_POST['cert_date'] ) ) update_post_meta( $post_id, '_date', sanitize_text_field( $_POST['cert_date'] ) );
     if ( isset( $_POST['cert_receipt'] ) ) update_post_meta( $post_id, '_receipt', sanitize_text_field( $_POST['cert_receipt'] ) );
     if ( isset( $_POST['cert_att_receipt'] ) ) update_post_meta( $post_id, '_att_receipt', sanitize_text_field( $_POST['cert_att_receipt'] ) );
