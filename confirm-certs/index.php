@@ -259,7 +259,7 @@ function drawCenteredRtlText($image, $fontSize, $centerX, $y, $maxWidth, $color,
     $fontSize = fitFontSize($fontSize, $font, $text, $maxWidth);
     $box = imagettfbbox($fontSize, 0, $font, $text);
     $textWidth = abs($box[2] - $box[0]);
-    $x = $centerX - ($textWidth / 2);
+    $x = (int) round($centerX - ($textWidth / 2));
 
     imagettftext($image, $fontSize, 0, $x, $y, $color, $font, $text);
 }
@@ -382,6 +382,273 @@ function drawPlainTextInBox($image, $fontSize, $rightX, $y, $maxWidth, $color, $
     imagettftext($image, $fontSize, 0, $x, $y, $color, $font, $text);
 }
 
+function toArabicIndicDigits($text)
+{
+    return strtr($text, [
+        '0' => '٠',
+        '1' => '١',
+        '2' => '٢',
+        '3' => '٣',
+        '4' => '٤',
+        '5' => '٥',
+        '6' => '٦',
+        '7' => '٧',
+        '8' => '٨',
+        '9' => '٩',
+    ]);
+}
+
+function toWesternDigits($text)
+{
+    return strtr($text, [
+        '٠' => '0',
+        '١' => '1',
+        '٢' => '2',
+        '٣' => '3',
+        '٤' => '4',
+        '٥' => '5',
+        '٦' => '6',
+        '٧' => '7',
+        '٨' => '8',
+        '٩' => '9',
+    ]);
+}
+
+function normalizeCardGovernorate($governorate)
+{
+    $governorate = trim(str_replace('+', ' ', $governorate));
+    $governorate = preg_replace('/\s+/u', ' ', $governorate);
+    if (preg_match('/القاهرة\s+(?:و\s*)?الجيزة/u', $governorate)) {
+        return 'القاهرة';
+    }
+
+    $parts = preg_split('/\s*(?:،|,|\/|\||-|\bو\b)\s*/u', $governorate);
+
+    if (!empty($parts[0])) {
+        return trim($parts[0]);
+    }
+
+    return $governorate;
+}
+
+function formatCardApprovalDate($dateText)
+{
+    $dateText = trim($dateText);
+    if ($dateText === '') {
+        return '';
+    }
+
+    $normalized = strtr($dateText, [
+        '٠' => '0',
+        '١' => '1',
+        '٢' => '2',
+        '٣' => '3',
+        '٤' => '4',
+        '٥' => '5',
+        '٦' => '6',
+        '٧' => '7',
+        '٨' => '8',
+        '٩' => '9',
+        '،' => ' ',
+        ',' => ' ',
+    ]);
+
+    if (preg_match('/(\d{4})\s*[\/\-]\s*(\d{1,2})\s*[\/\-]\s*(\d{1,2})/u', $normalized, $matches)) {
+        return toArabicIndicDigits($matches[1] . ' / ' . (int) $matches[2] . ' / ' . (int) $matches[3]);
+    }
+
+    if (preg_match('/(\d{1,2})\s*[\/\-]\s*(\d{1,2})\s*[\/\-]\s*(\d{4})/u', $normalized, $matches)) {
+        return toArabicIndicDigits($matches[3] . ' / ' . (int) $matches[2] . ' / ' . (int) $matches[1]);
+    }
+
+    $months = [
+        'يناير' => 1,
+        'فبراير' => 2,
+        'مارس' => 3,
+        'ابريل' => 4,
+        'إبريل' => 4,
+        'أبريل' => 4,
+        'مايو' => 5,
+        'يونيو' => 6,
+        'يونيه' => 6,
+        'يوليو' => 7,
+        'أغسطس' => 8,
+        'اغسطس' => 8,
+        'سبتمبر' => 9,
+        'اكتوبر' => 10,
+        'أكتوبر' => 10,
+        'إكتوبر' => 10,
+        'نوفمبر' => 11,
+        'ديسمبر' => 12,
+    ];
+
+    foreach ($months as $monthName => $monthNumber) {
+        if (mb_strpos($dateText, $monthName) === false) {
+            continue;
+        }
+
+        preg_match_all('/\d+/u', $normalized, $numbers);
+        $numbers = $numbers[0];
+        $year = '';
+        $day = '';
+
+        foreach ($numbers as $number) {
+            if (strlen($number) === 4) {
+                $year = $number;
+            } elseif ($day === '') {
+                $day = $number;
+            }
+        }
+
+        if ($year !== '' && $day !== '') {
+            return toArabicIndicDigits($year . ' / ' . $monthNumber . ' / ' . (int) $day);
+        }
+    }
+
+    return toArabicIndicDigits($dateText);
+}
+
+function formatCardRole($coursename)
+{
+    $coursename = trim($coursename);
+    $coursename = preg_replace('/\s+/u', ' ', $coursename);
+    $coursename = preg_replace('/^(?:دورة|دوره)\s+/u', '', $coursename);
+
+    if (preg_match('/^(?:أخصائي|اخصائي|إخصائي)\b/u', $coursename)) {
+        return preg_replace('/^(?:أخصائي|اخصائي)\b/u', 'إخصائي', $coursename);
+    }
+
+    return 'إخصائي ' . $coursename;
+}
+
+function normalizeEnglishStateCode($governorate)
+{
+    $governorate = normalizeCardGovernorate($governorate);
+    $map = [
+        'القاهرة' => 'CAIRO',
+        'الجيزة' => 'GIZA',
+        'الإسكندرية' => 'ALEX',
+        'الاسكندرية' => 'ALEX',
+        'الشرقية' => 'SHARQIA',
+        'الدقهلية' => 'DAKAHLIA',
+        'دمياط' => 'DAMIETTA',
+        'بورسعيد' => 'PORTSAID',
+        'البحيرة' => 'BEHEIRA',
+        'الغربية' => 'GHARBIA',
+        'بنها' => 'BANHA',
+        'شبرا الخيمة' => 'SHOUBRA',
+        'المنوفية' => 'MONUFIA',
+        'الاسماعيلية' => 'ISMAILIA',
+        'الإسماعيلية' => 'ISMAILIA',
+        'السويس' => 'SUEZ',
+        'كفر الشيخ' => 'KAFRELSHEIKH',
+        'مرسي مطروح' => 'MATROUH',
+        'مرسى مطروح' => 'MATROUH',
+        'بني سويف' => 'BENISUEF',
+        'بنى سويف' => 'BENISUEF',
+        'الفيوم' => 'FAYOUM',
+        'المنيا' => 'MINYA',
+        'اسيوط' => 'ASSIUT',
+        'أسيوط' => 'ASSIUT',
+        'سوهاج' => 'SOHAG',
+        'الأقصر' => 'LUXOR',
+        'الاقصر' => 'LUXOR',
+        'أسوان' => 'ASWAN',
+        'اسوان' => 'ASWAN',
+        'الوادي الجديد' => 'NEWVALLEY',
+        'الغردقة' => 'HURGHADA',
+        'العريش' => 'ARISH',
+        'قنا' => 'QENA',
+    ];
+
+    if (isset($map[$governorate])) {
+        return $map[$governorate];
+    }
+
+    return preg_replace('/[^A-Z0-9]/', '', strtoupper($governorate));
+}
+
+function formatSeatFooterDate($dateText)
+{
+    $dateText = trim($dateText);
+    if ($dateText === '') {
+        return '';
+    }
+
+    $normalized = strtr($dateText, [
+        '٠' => '0',
+        '١' => '1',
+        '٢' => '2',
+        '٣' => '3',
+        '٤' => '4',
+        '٥' => '5',
+        '٦' => '6',
+        '٧' => '7',
+        '٨' => '8',
+        '٩' => '9',
+        '،' => ' ',
+        ',' => ' ',
+    ]);
+    $months = [
+        1 => 'يناير',
+        2 => 'فبراير',
+        3 => 'مارس',
+        4 => 'أبريل',
+        5 => 'مايو',
+        6 => 'يونيو',
+        7 => 'يوليو',
+        8 => 'أغسطس',
+        9 => 'سبتمبر',
+        10 => 'أكتوبر',
+        11 => 'نوفمبر',
+        12 => 'ديسمبر',
+    ];
+
+    if (preg_match('/(\d{4})\s*[\/\-]\s*(\d{1,2})\s*[\/\-]\s*(\d{1,2})/u', $normalized, $matches)) {
+        $monthNumber = (int) $matches[2];
+        if (isset($months[$monthNumber])) {
+            return (int) $matches[3] . ' ' . $months[$monthNumber] . ' ' . $matches[1];
+        }
+    }
+
+    if (preg_match('/(\d{1,2})\s*[\/\-]\s*(\d{1,2})\s*[\/\-]\s*(\d{4})/u', $normalized, $matches)) {
+        $monthNumber = (int) $matches[2];
+        if (isset($months[$monthNumber])) {
+            return (int) $matches[1] . ' ' . $months[$monthNumber] . ' ' . $matches[3];
+        }
+    }
+
+    return strtr($dateText, [
+        '٠' => '0',
+        '١' => '1',
+        '٢' => '2',
+        '٣' => '3',
+        '٤' => '4',
+        '٥' => '5',
+        '٦' => '6',
+        '٧' => '7',
+        '٨' => '8',
+        '٩' => '9',
+    ]);
+}
+
+function formatSeatProgramDate($dateText)
+{
+    $date = formatSeatFooterDate($dateText);
+    if (preg_match('/^\d{1,2}\s+(\S+)\s+(\d{4})$/u', $date, $matches)) {
+        return 'خلال شهر ' . $matches[1] . ' ' . $matches[2];
+    }
+
+    return toWesternDigits($dateText);
+}
+
+function drawImageFit($dst, $src, $dstX, $dstY, $dstW, $dstH)
+{
+    imagealphablending($dst, true);
+    imagesavealpha($src, true);
+    imagecopyresampled($dst, $src, $dstX, $dstY, 0, 0, $dstW, $dstH, imagesx($src), imagesy($src));
+}
+
 function drawManagementCertificate($image, $name, $coursename, $hours, $dateText)
 {
     $font = getCertificateFont('bold');
@@ -481,7 +748,7 @@ function drawExperienceCertificate($image, $name, $coursename, $dateText)
     drawCenteredRtlText($image, 52, 1240, 1050, 2320, $black, $font, 'إضافة إلى أخلاقها المثالية والتزامها بالمواعيد وتعليمات الإدارة');
 }
 
-function drawSeatCertificate($image, $name, $coursename, $dateText)
+function drawSeatCertificate($image, $name, $coursename, $dateText, $governorate, $receiptNumber)
 {
     $font = getCertificateFont('bold');
     if ($font === false) {
@@ -492,10 +759,26 @@ function drawSeatCertificate($image, $name, $coursename, $dateText)
 
     $centerX = imagesx($image) / 2;
     $red = imagecolorallocate($image, 235, 0, 0);
+    $darkBlue = imagecolorallocate($image, 23, 35, 78);
+    $englishFont = is_readable('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf')
+        ? '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
+        : $font;
+    $scaleX = imagesx($image) / 3508;
+    $scaleY = imagesy($image) / 4961;
 
-    drawCenteredRtlText($image, 128, $centerX, 2150, 2300, $red, $font, ' ' . $name . ' ');
-    drawCenteredRtlText($image, 104, $centerX, 2865, 1700, $red, $font, $coursename);
-    drawCenteredRtlText($image, 86, $centerX, 3405, 1500, $red, $font, $dateText);
+    drawCenteredRtlText($image, (int) round(128 * $scaleY), $centerX, (int) round(2150 * $scaleY), (int) round(2300 * $scaleX), $red, $font, ' ' . $name . ' ');
+    drawCenteredRtlText($image, (int) round(104 * $scaleY), $centerX, (int) round(2865 * $scaleY), (int) round(1700 * $scaleX), $red, $font, $coursename);
+    drawCenteredRtlText($image, (int) round(86 * $scaleY), $centerX, (int) round(3405 * $scaleY), (int) round(1500 * $scaleX), $red, $font, formatSeatProgramDate($dateText));
+
+    $scaleX = imagesx($image) / 1131;
+    $scaleY = imagesy($image) / 1600;
+    $state = normalizeCardGovernorate($governorate);
+    $receiptNumber = toWesternDigits($receiptNumber);
+    $footerCode = 'ACT' . normalizeEnglishStateCode($state) . ' ' . $receiptNumber;
+    $footerDate = $state . ' في ' . formatSeatFooterDate($dateText);
+
+    imagettftext($image, (int) round(16 * $scaleY), 0, (int) round(123 * $scaleX), (int) round(1430 * $scaleY), $darkBlue, $englishFont, $footerCode);
+    drawCenteredRtlText($image, (int) round(20 * $scaleY), $centerX, (int) round(1485 * $scaleY), (int) round(360 * $scaleX), $darkBlue, $font, $footerDate);
 }
 
 function drawCardCertificate($image, $name, $coursename, $governorate, $nationalId, $approvalDate, $registrationNumber, $photoPath)
@@ -512,27 +795,36 @@ function drawCardCertificate($image, $name, $coursename, $governorate, $national
     $black = imagecolorallocate($image, 0, 0, 0);
     $red = imagecolorallocate($image, 190, 0, 0);
     $white = imagecolorallocate($image, 255, 255, 255);
+    $gold = imagecolorallocate($image, 222, 188, 132);
     $plainFont = is_readable('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf')
         ? '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
         : $font;
 
     $photo = loadImageFromPath($photoPath);
     if ($photo !== false) {
-        $stamp = imagecreatetruecolor(145, 145);
-        imagecopy($stamp, $image, 0, 0, 170, 285, 145, 145);
         imagefilledrectangle($image, 61, 179, 215, 374, $white);
         drawImageCover($image, $photo, 64, 190, 144, 171);
-        imagecopy($image, $stamp, 170, 285, 0, 0, 145, 145);
-        imagedestroy($stamp);
         imagedestroy($photo);
     }
+
+    $badge = loadImageFromPath(__DIR__ . '/badgelogo-card.png');
+    if ($badge !== false) {
+        drawImageFit($image, $badge, 168, 283, 148, 148);
+        imagedestroy($badge);
+    }
+
+    $governorate = normalizeCardGovernorate($governorate);
+    $coursename = formatCardRole($coursename);
+    $approvalDate = formatCardApprovalDate($approvalDate);
+    $registrationNumber = toArabicIndicDigits($registrationNumber);
 
     drawRtlTextInBox($image, 30, 810, 250, 420, $red, $font, $name);
     drawRtlTextInBox($image, 28, 810, 305, 310, $black, $font, $governorate);
     drawPlainTextInBox($image, 23, 805, 357, 320, $black, $plainFont, $nationalId);
     drawRtlTextInBox($image, 28, 760, 415, 380, $black, $font, $coursename);
-    drawRtlTextInBox($image, 23, 805, 465, 320, $black, $font, $approvalDate);
+    drawPlainTextInBox($image, 23, 805, 465, 320, $black, $plainFont, $approvalDate);
     drawPlainTextInBox($image, 23, 805, 520, 320, $black, $plainFont, $registrationNumber);
+    drawPlainTextInBox($image, 20, 545, 630, 120, $gold, $plainFont, $registrationNumber);
 }
 
 $font = getCertificateFont();
@@ -577,6 +869,8 @@ switch ($template) {
 $name = isset($_GET['name']) ? $_GET['name'] : $defaultName;
 $coursename = isset($_GET['course']) ? $_GET['course'] : $defaultCourseName;
 $seatDate = isset($_GET['date']) ? $_GET['date'] : "خلال شهر مارس ٢٠٢٦";
+$seatGovernorate = isset($_GET['governorate']) ? $_GET['governorate'] : "القاهرة";
+$seatReceiptNumber = isset($_GET['registration']) ? $_GET['registration'] : "1234";
 $managementDate = isset($_GET['date']) ? $_GET['date'] : "خلال شهر أكتوبر ٢٠٢٤";
 $managementHours = isset($_GET['hours']) ? $_GET['hours'] : "١٥";
 $eagleStateMonth = isset($_GET['month']) ? $_GET['month'] : "إبريل";
@@ -604,7 +898,7 @@ if ($template === 'management') {
 } elseif ($template === 'card') {
     drawCardCertificate($image, $name, $coursename, $cardGovernorate, $cardNationalId, $cardApprovalDate, $cardRegistrationNumber, $cardPhoto);
 } elseif ($template === 'seat') {
-    drawSeatCertificate($image, $name, $coursename, $seatDate);
+    drawSeatCertificate($image, $name, $coursename, $seatDate, $seatGovernorate, $seatReceiptNumber);
 } else {
     $nameRightX = imagesx($image) - $nameX;
     $courseRightX = imagesx($image) - $courseX;

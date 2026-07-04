@@ -10,6 +10,7 @@
 if ( ! defined( 'ABSPATH' ) ) exit;
 
 define( 'CRF_COURSE_MARKET_META_KEY', '_crf_course_market_type' );
+define( 'CRF_COURSE_TEMPLATES_META_KEY', '_crf_course_generation_templates' );
 
 function crf_get_course_market_options() {
     return array(
@@ -55,23 +56,77 @@ function crf_get_registration_market_type( $post_id ) {
     return $market_type === 'experience' ? 'experience' : 'other';
 }
 
-function crf_get_generation_templates_for_registration( $post_id ) {
-    if ( crf_get_registration_market_type( $post_id ) === 'experience' ) {
+function crf_get_default_generation_templates_for_market( $market_type ) {
+    if ( $market_type === 'experience' ) {
         return array( 'management', 'eagletogether', 'card', 'seat', 'experience' );
     }
 
     return array( 'management', 'eaglestate', 'card', 'seat' );
 }
 
-function crf_get_generation_labels() {
+function crf_get_generation_template_options() {
     return array(
+        'management'    => 'المديرية',
+        'eaglestate'    => 'مجلس الدولة',
+        'eagletogether' => 'مجلس معاً',
+        'card'          => 'كارنية',
+        'seat'          => 'شهادة الدورة',
+        'experience'    => 'شهادة خبرة',
+    );
+}
+
+function crf_sanitize_generation_templates( $templates ) {
+    $allowed = array_keys( crf_get_generation_template_options() );
+    $clean   = array();
+
+    if ( ! is_array( $templates ) ) {
+        return $clean;
+    }
+
+    foreach ( $templates as $template ) {
+        $template = sanitize_key( $template );
+        if ( in_array( $template, $allowed, true ) && ! in_array( $template, $clean, true ) ) {
+            $clean[] = $template;
+        }
+    }
+
+    return $clean;
+}
+
+function crf_get_course_generation_templates( $course_id ) {
+    $course_id = absint( $course_id );
+    if ( ! $course_id ) {
+        return crf_get_default_generation_templates_for_market( 'other' );
+    }
+
+    $templates = crf_sanitize_generation_templates( get_post_meta( $course_id, CRF_COURSE_TEMPLATES_META_KEY, true ) );
+    if ( ! empty( $templates ) ) {
+        return $templates;
+    }
+
+    $market_type = get_post_meta( $course_id, CRF_COURSE_MARKET_META_KEY, true );
+    $market_type = $market_type === 'experience' ? 'experience' : 'other';
+    return crf_get_default_generation_templates_for_market( $market_type );
+}
+
+function crf_get_generation_templates_for_registration( $post_id ) {
+    $course_id = crf_find_course_id_for_registration( $post_id );
+    if ( $course_id ) {
+        return crf_get_course_generation_templates( $course_id );
+    }
+
+    return crf_get_default_generation_templates_for_market( crf_get_registration_market_type( $post_id ) );
+}
+
+function crf_get_generation_labels() {
+    return array_merge( crf_get_generation_template_options(), array(
         'card'          => 'كارنية',
         'management'    => 'المديرية',
         'eaglestate'    => 'مجلس',
         'eagletogether' => 'مجلس',
         'seat'          => 'شهادة الدورة',
         'experience'    => 'خبرة حجامة و تدليك و  سم نحل و ابر صينية',
-    );
+    ) );
 }
 
 function crf_get_generation_filename( $post_id, $template ) {
@@ -115,9 +170,11 @@ function crf_render_generated_files_status_html( $post_id ) {
     foreach ( $items as $item ) {
         $status = $item['exists'] ? 'موجود' : 'غير موجود';
         $class  = $item['exists'] ? 'exists' : 'missing';
-        $html  .= '<li class="' . esc_attr( $class ) . '"><span>' . esc_html( $item['label'] ) . '</span>: ';
+        $html  .= '<li class="' . esc_attr( $class ) . '"><span class="crf-generated-file-title">' . esc_html( $item['label'] ) . '</span>';
         if ( $item['exists'] ) {
-            $html .= '<a href="' . esc_url( $item['url'] ) . '" target="_blank" rel="noopener">' . esc_html( $status ) . '</a>';
+            $html .= '<a class="crf-generated-preview-link" href="' . esc_url( $item['url'] ) . '" target="_blank" rel="noopener">';
+            $html .= '<img src="' . esc_url( $item['url'] ) . '" alt="' . esc_attr( $item['label'] ) . '">';
+            $html .= '<span>' . esc_html( $status ) . ' / معاينة</span></a>';
         } else {
             $html .= '<em>' . esc_html( $status ) . '</em>';
         }
@@ -145,13 +202,26 @@ function crf_render_tutor_course_market_meta_box( $post ) {
     if ( ! in_array( $value, array( 'other', 'experience' ), true ) ) {
         $value = 'other';
     }
+    $selected_templates = crf_get_course_generation_templates( $post->ID );
 
     wp_nonce_field( 'crf_save_course_market_type', 'crf_course_market_nonce' );
+    echo '<p><strong>نوع التسويق</strong></p>';
     foreach ( crf_get_course_market_options() as $option_value => $label ) :
         ?>
         <p>
             <label>
                 <input type="radio" name="crf_course_market_type" value="<?php echo esc_attr( $option_value ); ?>" <?php checked( $value, $option_value ); ?>>
+                <?php echo esc_html( $label ); ?>
+            </label>
+        </p>
+        <?php
+    endforeach;
+    echo '<hr><p><strong>الملفات التي يتم توليدها لهذه الدورة</strong></p>';
+    foreach ( crf_get_generation_template_options() as $template => $label ) :
+        ?>
+        <p>
+            <label>
+                <input type="checkbox" name="crf_course_generation_templates[]" value="<?php echo esc_attr( $template ); ?>" <?php checked( in_array( $template, $selected_templates, true ) ); ?>>
                 <?php echo esc_html( $label ); ?>
             </label>
         </p>
@@ -166,7 +236,17 @@ function crf_save_tutor_course_market_type( $post_id ) {
     if ( ! current_user_can( 'edit_post', $post_id ) ) return;
 
     $value = isset( $_POST['crf_course_market_type'] ) ? sanitize_key( $_POST['crf_course_market_type'] ) : 'other';
-    update_post_meta( $post_id, CRF_COURSE_MARKET_META_KEY, $value === 'experience' ? 'experience' : 'other' );
+    $value = $value === 'experience' ? 'experience' : 'other';
+    update_post_meta( $post_id, CRF_COURSE_MARKET_META_KEY, $value );
+
+    $templates = isset( $_POST['crf_course_generation_templates'] ) && is_array( $_POST['crf_course_generation_templates'] )
+        ? wp_unslash( $_POST['crf_course_generation_templates'] )
+        : array();
+    $templates = crf_sanitize_generation_templates( $templates );
+    if ( empty( $templates ) ) {
+        $templates = crf_get_default_generation_templates_for_market( $value );
+    }
+    update_post_meta( $post_id, CRF_COURSE_TEMPLATES_META_KEY, $templates );
 }
 
 add_action( 'admin_menu', 'crf_add_course_market_mapping_page' );
@@ -191,28 +271,41 @@ function crf_render_course_market_mapping_page() {
         $submitted_values = isset( $_POST['crf_course_market'] ) && is_array( $_POST['crf_course_market'] )
             ? wp_unslash( $_POST['crf_course_market'] )
             : array();
+        $submitted_templates = isset( $_POST['crf_course_templates'] ) && is_array( $_POST['crf_course_templates'] )
+            ? wp_unslash( $_POST['crf_course_templates'] )
+            : array();
 
         foreach ( crf_get_tutor_courses_for_select() as $course ) {
             $course_id = absint( $course->ID );
             $value     = isset( $submitted_values[ $course_id ] ) ? sanitize_key( $submitted_values[ $course_id ] ) : 'other';
             $value     = $value === 'experience' ? 'experience' : 'other';
+            $templates = isset( $submitted_templates[ $course_id ] ) && is_array( $submitted_templates[ $course_id ] )
+                ? crf_sanitize_generation_templates( $submitted_templates[ $course_id ] )
+                : array();
+            if ( empty( $templates ) ) {
+                $templates = crf_get_default_generation_templates_for_market( $value );
+            }
 
             update_post_meta( $course_id, CRF_COURSE_MARKET_META_KEY, $value );
+            update_post_meta( $course_id, CRF_COURSE_TEMPLATES_META_KEY, $templates );
             $updated_count++;
         }
 
-        echo '<div class="notice notice-success is-dismissible"><p>تم حفظ نوع التسويق لعدد ' . esc_html( $updated_count ) . ' دورة.</p></div>';
+        echo '<div class="notice notice-success is-dismissible"><p>تم حفظ نوع التسويق والملفات المطلوبة لعدد ' . esc_html( $updated_count ) . ' دورة.</p></div>';
     }
 
     $courses = crf_get_tutor_courses_for_select();
     ?>
     <div class="wrap crf-course-market-page" dir="rtl">
         <h1>ربط دورات Tutor LMS بنوع التسويق</h1>
-        <p>اختر هل الدورة من النوع العادي <strong>other</strong> أو نوع الخبرة <strong>experience</strong>. يتم حفظ الاختيار في meta key: <code><?php echo esc_html( CRF_COURSE_MARKET_META_KEY ); ?></code></p>
+        <p>اختر نوع التسويق والملفات التي يجب توليدها لكل دورة. زر "توليد الكل" في الطلب سيستخدم الملفات المختارة هنا حسب الدورة المرتبطة بالطلب.</p>
 
         <?php if ( empty( $courses ) ) : ?>
             <div class="notice notice-warning"><p>لا توجد دورات Tutor LMS حالياً.</p></div>
         <?php else : ?>
+            <style>
+                .crf-template-checks label { display: inline-block; min-width: 130px; margin: 0 0 8px 14px; }
+            </style>
             <form method="post">
                 <?php wp_nonce_field( 'crf_save_course_market_map', 'crf_course_market_map_nonce' ); ?>
                 <table class="widefat striped">
@@ -221,6 +314,7 @@ function crf_render_course_market_mapping_page() {
                             <th style="text-align:right;">الدورة</th>
                             <th style="width:120px;text-align:right;">الحالة</th>
                             <th style="width:320px;text-align:right;">نوع التسويق</th>
+                            <th style="text-align:right;">الملفات التي يتم توليدها</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -232,6 +326,7 @@ function crf_render_course_market_mapping_page() {
                             }
                             $status_object = get_post_status_object( $course->post_status );
                             $status_label  = $status_object ? $status_object->label : $course->post_status;
+                            $selected_templates = crf_get_course_generation_templates( $course->ID );
                             ?>
                             <tr>
                                 <td>
@@ -243,6 +338,14 @@ function crf_render_course_market_mapping_page() {
                                     <?php foreach ( crf_get_course_market_options() as $option_value => $label ) : ?>
                                         <label style="display:inline-block;margin-left:18px;">
                                             <input type="radio" name="crf_course_market[<?php echo esc_attr( $course->ID ); ?>]" value="<?php echo esc_attr( $option_value ); ?>" <?php checked( $value, $option_value ); ?>>
+                                            <?php echo esc_html( $label ); ?>
+                                        </label>
+                                    <?php endforeach; ?>
+                                </td>
+                                <td class="crf-template-checks">
+                                    <?php foreach ( crf_get_generation_template_options() as $template => $label ) : ?>
+                                        <label>
+                                            <input type="checkbox" name="crf_course_templates[<?php echo esc_attr( $course->ID ); ?>][]" value="<?php echo esc_attr( $template ); ?>" <?php checked( in_array( $template, $selected_templates, true ) ); ?>>
                                             <?php echo esc_html( $label ); ?>
                                         </label>
                                     <?php endforeach; ?>
@@ -398,6 +501,12 @@ function crf_ult_render_meta_box_callback( $post ) {
 function crf_ult_render_generator_box_callback( $post ) {
     wp_nonce_field( 'crf_generation_nonce_action', 'crf_generation_nonce' );
     $market_type = crf_get_registration_market_type( $post->ID );
+    $course_id = crf_find_course_id_for_registration( $post->ID );
+    $template_labels = crf_get_generation_labels();
+    $selected_template_labels = array();
+    foreach ( crf_get_generation_templates_for_registration( $post->ID ) as $template ) {
+        $selected_template_labels[] = isset( $template_labels[ $template ] ) ? $template_labels[ $template ] : $template;
+    }
     ?>
     <style>
         .crf-gen-box { direction: rtl; text-align: right; font-family: system-ui, sans-serif; padding: 5px; }
@@ -406,21 +515,25 @@ function crf_ult_render_generator_box_callback( $post ) {
         .crf-status-msg.success { background: #e2f0d9; color: #385723; border: 1px solid #c5e0b4; }
         .crf-status-msg.error { background: #fce4d6; color: #c65911; border: 1px solid #f8cbad; }
         .crf-generated-files-list { margin: 10px 0 14px; padding: 0; }
-        .crf-generated-files-list li { display: flex; justify-content: space-between; gap: 6px; margin: 0 0 6px; padding: 6px 8px; border-radius: 4px; background: #f6f7f7; font-size: 12px; }
+        .crf-generated-files-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 0 0 6px; padding: 6px 8px; border-radius: 4px; background: #f6f7f7; font-size: 12px; }
         .crf-generated-files-list li.exists { border-right: 4px solid #46b450; }
         .crf-generated-files-list li.missing { border-right: 4px solid #d63638; }
         .crf-generated-files-list em { color: #777; font-style: normal; }
+        .crf-generated-preview-link { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
+        .crf-generated-preview-link img { width: 42px; height: 28px; object-fit: cover; border: 1px solid #ccd0d4; background: #fff; }
     </style>
 
     <div class="crf-gen-box">
         <p style="color: #666; font-size: 12px;">نوع تسويق الدورة: <strong><?php echo esc_html( $market_type ); ?></strong></p>
+        <p style="color: #666; font-size: 12px;">الدورة المرتبطة: <strong><?php echo $course_id ? esc_html( get_the_title( $course_id ) ) : 'غير محددة'; ?></strong></p>
+        <p style="color: #666; font-size: 12px;">الملفات المحددة: <strong><?php echo esc_html( implode( '، ', $selected_template_labels ) ); ?></strong></p>
         <div id="crf-generated-files-status"><?php echo crf_render_generated_files_status_html( $post->ID ); ?></div>
         
         <button type="button" class="button button-primary crf-gen-btn" data-cert-action="card" style="background:#2ecc71; border-color:#27ae60;">توليد الكارنية</button>
         <button type="button" class="button button-primary crf-gen-btn" data-cert-action="management" style="background:#3498db; border-color:#2980b9;">توليد المديرية</button>
         <button type="button" class="button button-primary crf-gen-btn" data-cert-action="council" style="background:#9b59b6; border-color:#8e44ad;">توليد مجلس</button>
         <button type="button" class="button button-primary crf-gen-btn" data-cert-action="certificate" style="background:#f1c40f; border-color:#f39c12; color:#000;">توليد الشهادة</button>
-        <button type="button" class="button button-secondary crf-gen-btn" data-cert-action="all">توليد الكل مرة واحدة</button>
+        <button type="button" class="button button-secondary crf-gen-btn" data-cert-action="all">توليد ملفات الدورة المحددة</button>
 
         <div id="crf-generator-status" class="crf-status-msg"></div>
     </div>
@@ -486,11 +599,15 @@ function crf_handle_admin_certificate_generation() {
         wp_send_json_error( 'صلاحيات غير كافية.' );
     }
 
-    $post_id     = intval($_POST['post_id']);
+    $post_id     = isset( $_POST['post_id'] ) ? absint( $_POST['post_id'] ) : 0;
     $cert_action = isset( $_POST['cert_action'] ) ? sanitize_key( $_POST['cert_action'] ) : '';
 
     if ( ! $post_id || empty( $cert_action ) ) {
         wp_send_json_error( 'بيانات الطلب غير مكتملة.' );
+    }
+
+    if ( get_post_type( $post_id ) !== 'cert_registration' || ! current_user_can( 'edit_post', $post_id ) ) {
+        wp_send_json_error( 'صلاحيات غير كافية لهذا الطلب.' );
     }
 
     $market_type = crf_get_registration_market_type( $post_id );
@@ -639,7 +756,7 @@ function crf_ult_enqueue_assets() {
 // 5. Shortcode Front-End Form [advanced_cert_form]
 add_shortcode( 'advanced_cert_form', 'crf_ult_render_form' );
 function crf_ult_render_form() {
-    $states = ["القاهرة + الجيزة", "الشرقية", "الدقهلية", "دمياط", "بورسعيد", "الإسكندرية", "البحيرة", "الغربية", "بنها", "شبرا الخيمة", "المنوفية", "الاسماعيلية", "السويس", "كفر الشيخ", "مرسي مطروح", "بني سويف", "الفيوم", "المنيا", "اسيوط", "سوهاج", "الأقصر", "أسوان", "الوادي الجديد", "الغردقة", "العريش", "قنا"];
+    $states = ["القاهرة", "الشرقية", "الدقهلية", "دمياط", "بورسعيد", "الإسكندرية", "البحيرة", "الغربية", "بنها", "شبرا الخيمة", "المنوفية", "الاسماعيلية", "السويس", "كفر الشيخ", "مرسي مطروح", "بني سويف", "الفيوم", "المنيا", "اسيوط", "سوهاج", "الأقصر", "أسوان", "الوادي الجديد", "الغردقة", "العريش", "قنا"];
     $courses = ["الإسعافات الأولية", "التخاطب وتعديل السلوك", "نور البيان", "إدراة الموارد البشرية ( HR )", "التسويق", "المحاسبة الإلكترونية", "الحجامة", "الإبر الصينية", "سم النحل", "اعداد القادة", "التنمية البشرية", "التغذية العلاجية", "التحاليل الطبية", "التأهيل لسوق العمل", "الحساب الذهني", "التدليك و العناية الجسدية", "الصحافة و الاذاعة و الاعلام", "العلاقات العامة", "تدريب المدربين ( TOT )", "السلامة والصحة المهنية", "الضيافة الجوية", "المساحة و الخرائط", "الذكاء الاصطناعي", "البرمجة", "المقاييس النفسية"];
     $tutor_courses = crf_get_tutor_courses_for_select();
 
@@ -888,6 +1005,8 @@ function crf_ult_col_content( $col, $post_id ) {
             $reject_url  = wp_nonce_url( admin_url('admin-ajax.php?action=change_cert_status&post_id='.$post_id.'&status=rejected'), 'change_status_nonce' );
             echo '<a href="'.esc_url($approve_url).'" class="button button-small" style="background:#2ecc71;color:#fff;border:none;margin-left:4px;">قبول</a>';
             echo '<a href="'.esc_url($reject_url).'" class="button button-small" style="background:#e74c3c;color:#fff;border:none;">رفض</a>';
+            echo '<button type="button" class="button button-small crf-list-generate" data-post-id="' . esc_attr( $post_id ) . '" style="display:block;margin-top:6px;">توليد ملفات الدورة</button>';
+            echo '<span class="crf-list-generate-status" aria-live="polite"></span>';
             break;
     }
 }
@@ -900,10 +1019,69 @@ function crf_admin_generated_files_column_styles() {
     <style>
         .column-generated { width: 190px; }
         .column-generated .crf-generated-files-list { margin: 0; padding: 0; }
-        .column-generated .crf-generated-files-list li { margin: 0 0 4px; font-size: 12px; line-height: 1.4; }
+        .column-generated .crf-generated-files-list li { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin: 0 0 4px; padding: 4px 6px; font-size: 12px; line-height: 1.4; background: #f6f7f7; }
         .column-generated .crf-generated-files-list li.exists a { color: #008a20; font-weight: 600; }
         .column-generated .crf-generated-files-list li.missing em { color: #777; font-style: normal; }
+        .column-generated .crf-generated-preview-link { display: inline-flex; align-items: center; gap: 5px; text-decoration: none; }
+        .column-generated .crf-generated-preview-link img { width: 38px; height: 24px; object-fit: cover; border: 1px solid #ccd0d4; background: #fff; }
+        .column-actions { width: 145px; }
+        .crf-list-generate-status { display: block; margin-top: 4px; font-size: 11px; }
+        .crf-list-generate-status.success { color: #008a20; }
+        .crf-list-generate-status.error { color: #d63638; }
     </style>
+    <?php
+}
+
+add_action( 'admin_footer-edit.php', 'crf_admin_list_generation_script' );
+function crf_admin_list_generation_script() {
+    $screen = get_current_screen();
+    if ( ! $screen || $screen->post_type !== 'cert_registration' ) return;
+    ?>
+    <script>
+    jQuery(function($) {
+        var nonce = '<?php echo esc_js( wp_create_nonce( 'crf_generation_nonce_action' ) ); ?>';
+
+        $('.wp-list-table').on('click', '.crf-list-generate', function(e) {
+            e.preventDefault();
+            var $button = $(this);
+            var $row = $button.closest('tr');
+            var $status = $button.siblings('.crf-list-generate-status');
+            var originalText = $button.text();
+
+            if ($button.prop('disabled')) return;
+
+            $button.prop('disabled', true).text('جاري التوليد...');
+            $status.removeClass('success error').text('');
+
+            $.ajax({
+                url: ajaxurl,
+                method: 'POST',
+                data: {
+                    action: 'crf_generate_admin_certificate',
+                    post_id: $button.data('post-id'),
+                    cert_action: 'all',
+                    security: nonce
+                },
+                success: function(response) {
+                    if (response.success) {
+                        $status.addClass('success').text(response.data.message);
+                        if (response.data.status_html) {
+                            $row.find('.column-generated').html(response.data.status_html);
+                        }
+                    } else {
+                        $status.addClass('error').text(response.data || 'فشل التوليد.');
+                    }
+                },
+                error: function() {
+                    $status.addClass('error').text('خطأ في الخادم.');
+                },
+                complete: function() {
+                    $button.prop('disabled', false).text(originalText);
+                }
+            });
+        });
+    });
+    </script>
     <?php
 }
 
