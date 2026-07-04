@@ -165,6 +165,7 @@ function crf_get_generated_files_status( $post_id ) {
 
 function crf_render_generated_files_status_html( $post_id ) {
     $items = crf_get_generated_files_status( $post_id );
+    $delete_nonce = wp_create_nonce( 'crf_delete_generated_file' );
     $html  = '<ul class="crf-generated-files-list">';
 
     foreach ( $items as $item ) {
@@ -172,9 +173,12 @@ function crf_render_generated_files_status_html( $post_id ) {
         $class  = $item['exists'] ? 'exists' : 'missing';
         $html  .= '<li class="' . esc_attr( $class ) . '"><span class="crf-generated-file-title">' . esc_html( $item['label'] ) . '</span>';
         if ( $item['exists'] ) {
+            $html .= '<span class="crf-generated-file-actions">';
             $html .= '<a class="crf-generated-preview-link" href="' . esc_url( $item['url'] ) . '" target="_blank" rel="noopener">';
             $html .= '<img src="' . esc_url( $item['url'] ) . '" alt="' . esc_attr( $item['label'] ) . '">';
             $html .= '<span>' . esc_html( $status ) . ' / معاينة</span></a>';
+            $html .= '<button type="button" class="button-link-delete crf-delete-generated-file" data-post-id="' . esc_attr( $post_id ) . '" data-template="' . esc_attr( $item['template'] ) . '" data-nonce="' . esc_attr( $delete_nonce ) . '">حذف</button>';
+            $html .= '</span>';
         } else {
             $html .= '<em>' . esc_html( $status ) . '</em>';
         }
@@ -519,8 +523,10 @@ function crf_ult_render_generator_box_callback( $post ) {
         .crf-generated-files-list li.exists { border-right: 4px solid #46b450; }
         .crf-generated-files-list li.missing { border-right: 4px solid #d63638; }
         .crf-generated-files-list em { color: #777; font-style: normal; }
+        .crf-generated-file-actions { display: inline-flex; align-items: center; gap: 8px; }
         .crf-generated-preview-link { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
         .crf-generated-preview-link img { width: 42px; height: 28px; object-fit: cover; border: 1px solid #ccd0d4; background: #fff; }
+        .crf-delete-generated-file { color: #b32d2e; text-decoration: none; }
     </style>
 
     <div class="crf-gen-box">
@@ -582,6 +588,44 @@ function crf_ult_render_generator_box_callback( $post ) {
                 complete: function() {
                     $('.crf-gen-btn').prop('disabled', false);
                     $btn.text(originalText);
+                }
+            });
+        });
+
+        $('#crf-generated-files-status').on('click', '.crf-delete-generated-file', function(e) {
+            e.preventDefault();
+            var $btn = $(this);
+            var $statusBox = $('#crf-generator-status');
+
+            if ($btn.prop('disabled') || ! window.confirm('حذف هذا الملف المولد؟')) return;
+
+            $btn.prop('disabled', true).text('جاري الحذف...');
+            $statusBox.hide().removeClass('success error');
+
+            $.ajax({
+                url: ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'crf_delete_generated_file',
+                    post_id: $btn.data('post-id'),
+                    template: $btn.data('template'),
+                    security: $btn.data('nonce')
+                },
+                success: function(response) {
+                    if (response.success) {
+                        $statusBox.addClass('success').html('✅ ' + response.data.message).fadeIn();
+                        if (response.data.status_html) {
+                            $('#crf-generated-files-status').html(response.data.status_html);
+                        }
+                    } else {
+                        $statusBox.addClass('error').text('❌ ' + response.data).fadeIn();
+                    }
+                },
+                error: function() {
+                    $statusBox.addClass('error').text('❌ حدث خطأ غير متوقع في الخادم.').fadeIn();
+                },
+                complete: function() {
+                    $btn.prop('disabled', false).text('حذف');
                 }
             });
         });
@@ -722,6 +766,36 @@ function crf_generate_confirm_cert_file( $post_id, $template ) {
         'url'      => crf_get_generation_url( $filename ),
         'filename' => $filename,
     );
+}
+
+add_action( 'wp_ajax_crf_delete_generated_file', 'crf_handle_delete_generated_file' );
+function crf_handle_delete_generated_file() {
+    check_ajax_referer( 'crf_delete_generated_file', 'security' );
+
+    $post_id  = isset( $_POST['post_id'] ) ? absint( $_POST['post_id'] ) : 0;
+    $template = isset( $_POST['template'] ) ? sanitize_key( $_POST['template'] ) : '';
+
+    if ( ! $post_id || get_post_type( $post_id ) !== 'cert_registration' || ! current_user_can( 'edit_post', $post_id ) ) {
+        wp_send_json_error( 'صلاحيات غير كافية لهذا الطلب.' );
+    }
+
+    if ( ! in_array( $template, array_keys( crf_get_generation_template_options() ), true ) ) {
+        wp_send_json_error( 'نوع الملف غير صحيح.' );
+    }
+
+    $filename = crf_get_generation_filename( $post_id, $template );
+    $path     = crf_get_generation_dir() . $filename;
+
+    if ( file_exists( $path ) && ! unlink( $path ) ) {
+        wp_send_json_error( 'تعذر حذف الملف.' );
+    }
+
+    delete_post_meta( $post_id, '_generated_cert_url_' . sanitize_key( $template ) );
+
+    wp_send_json_success( array(
+        'message'     => 'تم حذف الملف بنجاح.',
+        'status_html' => crf_render_generated_files_status_html( $post_id ),
+    ) );
 }
 
 // Save Meta Box Data on Post Save
@@ -1022,8 +1096,10 @@ function crf_admin_generated_files_column_styles() {
         .column-generated .crf-generated-files-list li { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin: 0 0 4px; padding: 4px 6px; font-size: 12px; line-height: 1.4; background: #f6f7f7; }
         .column-generated .crf-generated-files-list li.exists a { color: #008a20; font-weight: 600; }
         .column-generated .crf-generated-files-list li.missing em { color: #777; font-style: normal; }
+        .column-generated .crf-generated-file-actions { display: inline-flex; align-items: center; gap: 6px; }
         .column-generated .crf-generated-preview-link { display: inline-flex; align-items: center; gap: 5px; text-decoration: none; }
         .column-generated .crf-generated-preview-link img { width: 38px; height: 24px; object-fit: cover; border: 1px solid #ccd0d4; background: #fff; }
+        .column-generated .crf-delete-generated-file { color: #b32d2e; text-decoration: none; }
         .column-actions { width: 145px; }
         .crf-list-generate-status { display: block; margin-top: 4px; font-size: 11px; }
         .crf-list-generate-status.success { color: #008a20; }
@@ -1077,6 +1153,45 @@ function crf_admin_list_generation_script() {
                 },
                 complete: function() {
                     $button.prop('disabled', false).text(originalText);
+                }
+            });
+        });
+
+        $('.wp-list-table').on('click', '.crf-delete-generated-file', function(e) {
+            e.preventDefault();
+            var $button = $(this);
+            var $row = $button.closest('tr');
+            var $status = $row.find('.crf-list-generate-status');
+
+            if ($button.prop('disabled') || ! window.confirm('حذف هذا الملف المولد؟')) return;
+
+            $button.prop('disabled', true).text('جاري الحذف...');
+            $status.removeClass('success error').text('');
+
+            $.ajax({
+                url: ajaxurl,
+                method: 'POST',
+                data: {
+                    action: 'crf_delete_generated_file',
+                    post_id: $button.data('post-id'),
+                    template: $button.data('template'),
+                    security: $button.data('nonce')
+                },
+                success: function(response) {
+                    if (response.success) {
+                        $status.addClass('success').text(response.data.message);
+                        if (response.data.status_html) {
+                            $row.find('.column-generated').html(response.data.status_html);
+                        }
+                    } else {
+                        $status.addClass('error').text(response.data || 'فشل الحذف.');
+                    }
+                },
+                error: function() {
+                    $status.addClass('error').text('خطأ في الخادم.');
+                },
+                complete: function() {
+                    $button.prop('disabled', false).text('حذف');
                 }
             });
         });

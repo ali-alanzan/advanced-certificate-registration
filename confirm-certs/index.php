@@ -821,7 +821,7 @@ function drawCardCertificate($image, $name, $coursename, $governorate, $national
     drawRtlTextInBox($image, 30, 810, 250, 420, $red, $font, $name);
     drawRtlTextInBox($image, 28, 810, 305, 310, $black, $font, $governorate);
     drawPlainTextInBox($image, 23, 805, 357, 320, $black, $plainFont, $nationalId);
-    drawRtlTextInBox($image, 28, 760, 415, 380, $black, $font, $coursename);
+    drawRtlTextInBox($image, 28, 805, 415, 425, $black, $font, $coursename);
     drawPlainTextInBox($image, 23, 805, 465, 320, $black, $plainFont, $approvalDate);
     drawPlainTextInBox($image, 23, 805, 520, 320, $black, $plainFont, $registrationNumber);
     drawPlainTextInBox($image, 20, 545, 630, 120, $gold, $plainFont, $registrationNumber);
